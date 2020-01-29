@@ -1,1 +1,5 @@
+Tasks to build the project
 
+1/29/20- 
+ Creation of the Github Repository
+ 
