@@ -5,3 +5,7 @@
 
 
 #include "rgb_lcd.h"
+
+
+#define Resistor 500
+#define Voltage 5
