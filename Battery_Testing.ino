@@ -34,6 +34,8 @@ double discharge_current = 0.0;
 double user_current_input = 0.0;
 double discharge_time = 0.0;
 bool user_set = false;
+bool charge_complete = false;
+bool discharge_complete = false;
 rgb_lcd lcd;
 /*ROTARY ENCODER*******************/
 #define clk 7
@@ -69,9 +71,9 @@ byte cursor_char[8] = {
 /**********************************************/
 /*Functions*/
 /*Function to check the open-circuit battery voltage and terminal voltage*/
-bool setup_battery_charging(bool first_setup=false);  // get open circuit voltage and check if charging required 
 void record_battery_data();     // record the current and voltage readings
-void manage_charging();         // 
+void manage_charging();         // function to manage the charging process
+void manage_discharing();       // function to manage discharginh process
 void check_temp();              // check the temperature of the battery
 void setup_discharge();         // setup the discharge rate and cutoff voltage
 void update_battery_status();   // get the battery status
@@ -134,13 +136,24 @@ void screen0(){
   
 }
 
-bool setup_battery_charging(bool first_setup=false){
-  double charge_current = Ah_rating/3.0;
-  if(first_setup){
+void manage_charging(){
+  if (charge_complete)
+    return;
+  static int first_call = true;
+  static double charge_current = Ah_rating/3.0;
+  delayMicroseconds(100);
+  if(first_call){
   open_circuit_voltage = (map(analogRead(Bat_VSensor_Pin), 0, 1023, 0 ,5)*((100.0+330.0)/100.0));
   if (open_circuit_voltage > Charged_BatVoltage){
-    return false;
-  }
+    charge_complete = true;
+    lcd.setCursor(0,0);
+    lcd.print("Battery Charged");
+    lcd.setCursor(0,1);
+    lcd.print("Voltage at:");
+    lcd.print(open_circuit_voltage);
+ }
+  first_call = false;
+  return;
   }
   if (user_set){
   charge_current = user_current_input;
@@ -148,33 +161,49 @@ bool setup_battery_charging(bool first_setup=false){
   if(charge_current > 4.0){
     charge_current = 4.0;
   }
-  int base_voltage = 0;
-  analogWrite(T_base, base_voltage);
-  digitalWrite(RELAY_1, HIGH);
-  while(get_current() < charge_current){
-    base_voltage += 1;
-    if (base_voltage > 255){
-      base_voltage = 255;
+ int base_voltage = 0;
+ analogWrite(T_base, base_voltage);
+ digitalWrite(RELAY_1, HIGH);
+ while(!button){
+      while(get_current() < charge_current){
+        base_voltage += 1;
+        if (base_voltage > 255){
+          base_voltage = 255;
+        }
+      analogWrite(T_base, base_voltage);
+      delayMicroseconds(100);
+      if(get_voltage() > float_voltage){
+        charge_complete = true;
+        break;
+      }
+      }
+      while(charge_current > get_current()){
+        base_voltage -= 1;
+        if(base_voltage <= 0){
+          base_voltage = 0;
+       }
+     analogWrite(T_base, base_voltage);
+     delayMicroseconds(100);
+     if(get_voltage() > float_voltage){
+       charge_complete = true;
+       break;
+      }
+     }
+     if(charge_complete){
+     digitalWrite(RELAY_1, LOW);
+     analogWrite(T_base, 0);
+     charge_complete = true;
+     return;
     }
-    analogWrite(T_base, base_voltage);
-    delayMicroseconds(100);
   }
-  while(charge_current > get_current()){
-    base_voltage -= 1;
-    if(base_voltage <= 0){
-      base_voltage = 0;
-    }
-    analogWrite(T_base, base_voltage);
-    delayMicroseconds(100);
-  }
-  return true;
-  
 }
 
 double get_current(){
+  delayMicroseconds(200);
   return ((analogRead(Current_Sens_Pin)/1024.0)*(5000/100));
 }
 
 double get_voltage(){
+  delayMicroseconds(200);
   return (map(analogRead(Bat_VSensor_Pin), 0, 1023, 0 ,5)*((100.0+330.0)/100.0));
 }
