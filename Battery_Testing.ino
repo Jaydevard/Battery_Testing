@@ -15,12 +15,12 @@
 #define RELAY_1 1
 #define RELAY_2 2
 #define RELAY_3 3
-#define RELAY_5 5
-#define RELAY_6 6
+#define MOSF1 9
+#define MOSF2 10
 #define MOSI 11
 #define MISO 12
 #define CLK 13
-#define CS 10
+#define CS 5
 /*OUTPUT CONTROL*******************/
 #define T_base 3 // PWM Pin
 /*OTHER CONSTS AND OBJECTS*********/
@@ -93,8 +93,8 @@ void setup(){
   pinMode(RELAY_1, OUTPUT);
   pinMode(RELAY_2, OUTPUT);
   pinMode(RELAY_3, OUTPUT);
-  pinMode(RELAY_5, OUTPUT);
-  pinMode(RELAY_6, OUTPUT);
+  pinMode(MOSF1, OUTPUT) ;
+  pinMode(MOSF2, OUTPUT);
   pinMode(T_base, OUTPUT);
   pinMode(sw, INPUT_PULLUP);
   pinMode(clk, INPUT);
@@ -104,12 +104,21 @@ void setup(){
   PCICR |= 0b00000100;
   PCMSK2 |= 0b00010000;
   attachInterrupt(0, isr0, RISING);
+  TCCR1A = 0;
+  TCCR1A = (1 << COM1A1)|(1 << COM1B1)|(1 << WGM11);
+  TCCR1B = 0;
+  TCCR1B = (1 << WGM13)|(1 << WGM12)|(1 << CS10);
+  ICR1 = 2047;
+  OCR1A = 0;
+  OCR1B = 0;
   lcd.begin(16, 2);
   lcd.setRGB(255, 255, 0);
 //Serial.begin(9600);
   lcd.clear();
   lcd.createChar(0, cursor_char);
+  lcd.clear();
   welcome_screen();
+  delay(2000);
   lcd.setCursor(0, 0);
   lcd.write((uint8_t)0);
 }
@@ -122,8 +131,6 @@ void loop(){
   
 }
 
-
-
 void welcome_screen(){
   lcd.clear();
   lcd.setCursor(1, 0); // lcd.setCursor(col, row)
@@ -134,6 +141,16 @@ void welcome_screen(){
 
 void screen0(){
   
+}
+
+double get_current(){
+  delayMicroseconds(200);
+  return ((analogRead(Current_Sens_Pin)/1024.0)*(5000/100));
+}
+
+double get_voltage(){
+  delayMicroseconds(200);
+  return (map(analogRead(Bat_VSensor_Pin), 0, 1023, 0 ,5)*((100.0+330.0)/100.0));
 }
 
 void manage_charging(){
@@ -198,12 +215,8 @@ void manage_charging(){
   }
 }
 
-double get_current(){
-  delayMicroseconds(200);
-  return ((analogRead(Current_Sens_Pin)/1024.0)*(5000/100));
-}
-
-double get_voltage(){
-  delayMicroseconds(200);
-  return (map(analogRead(Bat_VSensor_Pin), 0, 1023, 0 ,5)*((100.0+330.0)/100.0));
+void manage_discharging(){
+  //Manage the MOSFETS using OCR1A and OCR1B
+  
+  
 }
