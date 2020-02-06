@@ -1,6 +1,7 @@
 /* Battery Tester Project 
  *  Created on 1/29/2020
  *  Intended for EE MUN Term 5 Project
+ *  Author: Jaydev Madub && Girish Harendra Ramful
  */
 #include <rgb_lcd.h>
 #include <SD.h>
@@ -10,6 +11,7 @@
 #define Current_Sens_Pin A0
 #define Bat_VSensor_Pin A1
 #define Temp_Sensor A2
+#define Current_SensD_Pin A3
 #define Charged_BatVoltage 12.5
 /*RELAYS***************************/
 #define RELAY_1 1
@@ -81,6 +83,7 @@ double calculate_Ah_rating();   // calculate the Ah rating using Peukert's Law
 /*Helper Functions****************/
 double get_current();
 double get_voltage();
+double get_discharge_current();
 void record_data();
 /**Screens********************************/    
 void welcome_screen();
@@ -148,6 +151,12 @@ double get_current(){
   return ((analogRead(Current_Sens_Pin)/1024.0)*(5000/100));
 }
 
+double get_discharge_current(){
+  delayMicroseconds(200);
+  return ((analogRead(Current_SensD_Pin)/1024.0)*(5000/100));
+ 
+}
+
 double get_voltage(){
   delayMicroseconds(200);
   return (map(analogRead(Bat_VSensor_Pin), 0, 1023, 0 ,5)*((100.0+330.0)/100.0));
@@ -213,10 +222,47 @@ void manage_charging(){
      return;
     }
   }
+   delay(1000);
+   digitalWrite(RELAY_1, LOW);
+   analogWrite(T_base, 0);
 }
 
 void manage_discharging(){
   //Manage the MOSFETS using OCR1A and OCR1B
-  
-  
+  double current_current_reading = get_discharge_current();
+  int counter = 0;
+  bool dual = true;
+  delayMicroseconds(100);
+  if(discharge_current <= 4.0){
+    OCR1B = 0;
+    dual = false;
+  }
+  if (dual && OCR1A > OCR1B){
+    OCR1A = OCR1A/2;
+    OCR1B = OCR1A;
+  }
+    counter = 0;
+    while (get_discharge_current() < discharge_current){
+      delayMicroseconds(100);
+      counter++;
+      OCR1A += 1;
+      if(dual){
+      OCR1B += 1;
+      }
+      if (counter > 5000){
+        break;
+      }
+    }
+    counter = 0;
+    while (discharge_current < get_discharge_current()){
+      delayMicroseconds(100);
+      counter++;
+      OCR1A = OCR1A -1;
+      if(dual){
+      OCR1B = OCR1B -1;
+      }
+      if(counter > 5000){
+        break;
+      }
+    }
 }
