@@ -70,6 +70,17 @@ byte cursor_char[8] = {
   0b11000,
   0b10000
 };
+
+byte custom_char[8] = {
+   0b00100,
+  0b01110,
+  0b11111,
+  0b00000,
+  0b00000,
+  0b11111,
+  0b01110,
+  0b00100,
+};
 /**********************************************/
 /*Functions*/
 /*Function to check the open-circuit battery voltage and terminal voltage*/
@@ -87,9 +98,11 @@ double get_discharge_current();
 void record_data();
 /**Screens********************************/    
 void welcome_screen();
-void screen0();
-void screen1();
-void screen2();
+void mode_screen();
+void testing_mode_screen();
+void charge_mode_screen();
+void charging_mode_ongoing_screen();
+void discharging_mode_ongoing_screen();
 
 
 void setup(){
@@ -115,10 +128,11 @@ void setup(){
   OCR1A = 0;
   OCR1B = 0;
   lcd.begin(16, 2);
-  lcd.setRGB(255, 255, 0);
+  lcd.setRGB(255, 0, 0);
 //Serial.begin(9600);
   lcd.clear();
   lcd.createChar(0, cursor_char);
+  lcd.createChar(1, custom_char);
   lcd.clear();
   welcome_screen();
   delay(2000);
@@ -129,8 +143,10 @@ void setup(){
 
 void loop(){
 
-  
-
+  discharging_mode_ongoing_screen();
+  lcd.setCursor(11, 1);
+  lcd.write((uint8_t)0);
+  delay(2000);
   
 }
 
@@ -138,13 +154,112 @@ void welcome_screen(){
   lcd.clear();
   lcd.setCursor(1, 0); // lcd.setCursor(col, row)
   lcd.print("Battery Tester");
-  lcd.setCursor(1,1);
+  lcd.setCursor(5,1);
   lcd.print("Welcome");
 }
 
-void screen0(){
+//****************************/
+// _Testing Mode
+// _C Mode  _D Mode
+void mode_screen(){
+  lcd.clear();
+  lcd.setCursor(1, 0);  // col, row
+  lcd.print("Testing Mode");
+  lcd.setCursor(1, 1);
+  lcd.print("C Mode");
+  lcd.setCursor(9, 1);
+  lcd.print("D Mode");
+}
+
+void testing_mode_screen(){
+  lcd.clear();
+  lcd.setCursor(0, 0);
+  lcd.print("Testing Mode");
+  lcd.setCursor(1, 1);
+  lcd.print("Set Param");
+  lcd.setCursor(12, 1);
+  lcd.print("Back");
   
 }
+
+void set_testing_param_screen(){
+  lcd.clear();
+  lcd.setCursor(0,0); // col, row
+  lcd.print("DC:");
+  lcd.setCursor(9, 0);
+  lcd.print("CC:");
+  lcd.setCursor(1,1);
+  lcd.print("Start");
+  lcd.setCursor(12,1);
+  lcd.print("Back");
+}
+
+void charge_mode_screen(){
+  lcd.clear();
+  lcd.setCursor(0,0);
+  lcd.print("CC:");
+  lcd.setCursor(1,1);
+  lcd.print("Start");
+  lcd.setCursor(12,1);
+  lcd.print("Back");
+}
+
+
+void discharge_mode_screen(){
+  lcd.clear();
+  lcd.setCursor(0,0);
+  lcd.print("DC:");
+  lcd.setCursor(1,1);
+  lcd.print("Start");
+  lcd.setCursor(12,1);
+  lcd.print("Back");
+}
+
+void charging_mode_ongoing_screen(){
+  lcd.clear();
+  lcd.setCursor(0,0);
+  lcd.print("t:");
+  lcd.print("   ");
+  lcd.print("min");
+  lcd.setCursor(9,0);
+  lcd.print("V:");
+  lcd.print("    ");
+  lcd.print("V");
+  lcd.setCursor(0,1);
+  lcd.print("C:");
+  lcd.print("    ");
+  lcd.print("A");
+  lcd.print(" ");
+  lcd.print("CM");
+  lcd.setCursor(12, 1);
+  lcd.print("Back");
+}
+
+
+void discharging_mode_ongoing_screen(){
+  lcd.clear();
+  lcd.setCursor(0,0);
+  lcd.print("t:");
+  lcd.print("   ");
+  lcd.print("min");
+  lcd.setCursor(9,0);
+  lcd.print("V:");
+  lcd.print("    ");
+  lcd.print("V");
+  lcd.setCursor(0,1);
+  lcd.print("C:");
+  lcd.print("    ");
+  lcd.print("A");
+  lcd.print(" ");
+  lcd.print("DM");
+  lcd.setCursor(12, 1);
+  lcd.print("Back");
+}
+
+
+
+
+
 
 double get_current(){
   delayMicroseconds(200);
