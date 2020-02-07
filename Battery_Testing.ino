@@ -17,8 +17,10 @@
 #define RELAY_1 1
 #define RELAY_2 2
 #define RELAY_3 3
+/*MOSFETS**************************/
 #define MOSF1 9
 #define MOSF2 10
+/*SD Card**************************/
 #define MOSI 11
 #define MISO 12
 #define CLK 13
@@ -39,6 +41,7 @@ bool user_set = false;
 bool charge_complete = false;
 bool discharge_complete = false;
 rgb_lcd lcd;
+File datalog;
 /*ROTARY ENCODER*******************/
 #define clk 7
 #define dt 8
@@ -92,10 +95,11 @@ void setup_discharge();         // setup the discharge rate and cutoff voltage
 void update_battery_status();   // get the battery status
 double calculate_Ah_rating();   // calculate the Ah rating using Peukert's Law
 /*Helper Functions****************/
-double get_current();
+double get_current();           
 double get_voltage();
 double get_discharge_current();
-void record_data();
+int record_data();
+bool close_file();
 /**Screens********************************/    
 void welcome_screen();
 void mode_screen();
@@ -204,7 +208,6 @@ void charge_mode_screen(){
   lcd.print("Back");
 }
 
-
 void discharge_mode_screen(){
   lcd.clear();
   lcd.setCursor(0,0);
@@ -235,7 +238,6 @@ void charging_mode_ongoing_screen(){
   lcd.print("Back");
 }
 
-
 void discharging_mode_ongoing_screen(){
   lcd.clear();
   lcd.setCursor(0,0);
@@ -255,11 +257,6 @@ void discharging_mode_ongoing_screen(){
   lcd.setCursor(12, 1);
   lcd.print("Back");
 }
-
-
-
-
-
 
 double get_current(){
   delayMicroseconds(200);
@@ -380,4 +377,31 @@ void manage_discharging(){
         break;
       }
     }
+}
+
+int record_data(String _dataline){
+  static bool open_file = true;
+  if(open_file){
+  if(!SD.begin(CS)){
+    return -1;
+  }
+  File dataFile = SD.open("datalog.csv", FILE_WRITE);
+  if (dataFile){
+    open_file = false;
+    datalog = dataFile;
+    
+  }
+  else {return -1;}
+  }
+ datalog.print(_dataline);
+ return 0;
+   
+}
+
+bool close_file(){
+  if(datalog){
+  datalog.close();
+  return true;
+  }
+  return false;
 }
