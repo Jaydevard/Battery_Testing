@@ -16,7 +16,6 @@
 /*RELAYS***************************/
 #define RELAY_1 1
 #define RELAY_2 2
-#define RELAY_3 3
 /*MOSFETS**************************/
 #define MOSF1 9
 #define MOSF2 10
@@ -24,9 +23,9 @@
 #define MOSI 11
 #define MISO 12
 #define CLK 13
-#define CS 5
+#define CS 4
 /*OUTPUT CONTROL*******************/
-#define T_base 3 // PWM Pin
+#define T_base 5 // PWM Pin
 /*OTHER CONSTS AND OBJECTS*********/
 double cutoff_voltage = 0.0;
 double open_circuit_voltage = 0.0;
@@ -43,17 +42,18 @@ bool discharge_complete = false;
 rgb_lcd lcd;
 File datalog;
 /*ROTARY ENCODER*******************/
-#define clk 7
-#define dt 8
+#define clk 2
+#define dt 3
 #define sw 4
 volatile boolean button = false;
 volatile boolean up = false;
 volatile boolean TurnDetected = false;
 char arrowpos = 0;
+char screen = 0;
 const unsigned char PS_128 = (1 << ADPS2) | (1 << ADPS1) | (1 << ADPS0);
 
 /*INTERRUPT************************/
-ISR(PC_INT2_VECT){
+ISR(PCINT2_vect){
   if (digitalRead(sw) == LOW){
     button = true;
   }
@@ -75,7 +75,7 @@ byte cursor_char[8] = {
 };
 
 byte custom_char[8] = {
-   0b00100,
+  0b00100,
   0b01110,
   0b11111,
   0b00000,
@@ -105,6 +105,7 @@ void welcome_screen();
 void mode_screen();
 void testing_mode_screen();
 void charge_mode_screen();
+void discharge_mode_screen();
 void charging_mode_ongoing_screen();
 void discharging_mode_ongoing_screen();
 
@@ -112,7 +113,6 @@ void discharging_mode_ongoing_screen();
 void setup(){
   pinMode(RELAY_1, OUTPUT);
   pinMode(RELAY_2, OUTPUT);
-  pinMode(RELAY_3, OUTPUT);
   pinMode(MOSF1, OUTPUT) ;
   pinMode(MOSF2, OUTPUT);
   pinMode(T_base, OUTPUT);
@@ -133,24 +133,236 @@ void setup(){
   OCR1B = 0;
   lcd.begin(16, 2);
   lcd.setRGB(255, 0, 0);
-//Serial.begin(9600);
+  //Serial.begin(9600);
   lcd.clear();
   lcd.createChar(0, cursor_char);
   lcd.createChar(1, custom_char);
   lcd.clear();
   welcome_screen();
-  delay(2000);
+  delay(4000);
+  mode_screen();
   lcd.setCursor(0, 0);
   lcd.write((uint8_t)0);
+  //test_writing();
 }
 
 
 void loop(){
 
-  discharging_mode_ongoing_screen();
-  lcd.setCursor(11, 1);
-  lcd.write((uint8_t)0);
-  delay(2000);
+  /*Turn Detected Switch case*****/
+  
+  if(TurnDetected){
+    delay(200);
+    switch(screen){
+      case 0:
+        switch(arrowpos){
+          case 0:
+            if(!up){
+              mode_screen();
+              lcd.setCursor(0, 1);
+              lcd.write((uint8_t)0);
+              arrowpos = 1;
+            }
+            break;
+          case 1:
+            if (!up){
+              mode_screen();
+              lcd.setCursor(8, 1);
+              lcd.write((uint8_t)0);
+              arrowpos = 2;
+            }
+            if(up){
+              mode_screen();
+              lcd.setCursor(0,0);
+              lcd.write((uint8_t)0);
+              arrowpos = 0;
+            }
+            break;
+          case 2:
+            if (up){
+              mode_screen();
+              lcd.setCursor(0,1);
+              lcd.write((uint8_t)0);
+              arrowpos = 1;
+            }
+            break;
+        }
+      break;
+     case 1:    // case 1 is testing mode screen
+      switch(arrowpos){
+        case 0:
+          if (!up){
+            testing_mode_screen();
+            lcd.setCursor(11,1);
+            lcd.write((uint8_t)0);
+            arrowpos = 1;
+          }
+          break;
+        case 1:
+          if (up){
+            testing_mode_screen();
+            lcd.setCursor(0, 1);
+            lcd.write((uint8_t)0);
+            arrowpos = 0;
+          break;
+         }
+      }
+      break;
+    case 2: // C Mode
+      switch(arrowpos){
+        case 0:
+          if (!up){
+            charge_mode_screen();
+            lcd.setCursor(0, 1);
+            lcd.write((uint8_t)0);
+            arrowpos = 1;
+          }
+          break;
+        case 1:
+          if(up){
+            charge_mode_screen();
+            lcd.setCursor(0, 0);
+            lcd.write((uint8_t)0);
+            arrowpos = 0;
+          }
+          if (!up){
+            charge_mode_screen();
+            lcd.setCursor(11, 1);
+            lcd.write((uint8_t)0);
+            arrowpos = 2;
+          }
+          break;
+        case 2:
+          if (up){
+            charge_mode_screen();
+            lcd.setCursor(0,1);
+            lcd.write((uint8_t)0);
+            arrowpos = 1;
+          }
+          break;
+        case 3:
+          if(up){
+            user_current_input = user_current_input + 0.1;
+            lcd.setCursor(4,0);
+            lcd.print(user_current_input);
+            lcd.print("A");
+            lcd.write((uint8_t)1);
+            lcd.print("   ");
+          }
+          else{
+            user_current_input = user_current_input - 0.1;
+            if(user_current_input < 0){
+              user_current_input = 0;
+            }
+            lcd.setCursor(4,0);
+            lcd.print(user_current_input);
+            lcd.print("A");
+            lcd.write((uint8_t)1);
+            lcd.print("   ");
+          }
+          break;
+      }
+      break;
+   case 3:    // D Mode
+    switch(arrowpos){
+      case 0:
+          if (!up){
+            discharge_mode_screen();
+            lcd.setCursor(0, 1);
+            lcd.write((uint8_t)0);
+            arrowpos = 1;
+          }
+          break;
+      case 1:
+          if(up){
+            discharge_mode_screen();
+            lcd.setCursor(0, 0);
+            lcd.write((uint8_t)0);
+            arrowpos = 0;
+          }
+          if (!up){
+            discharge_mode_screen();
+            lcd.setCursor(11, 1);
+            lcd.write((uint8_t)0);
+            arrowpos = 2;
+          }
+          break;
+      case 2:
+          if (up){
+            discharge_mode_screen();
+            lcd.setCursor(0,1);
+            lcd.write((uint8_t)0);
+            arrowpos = 1;
+          }
+          break;
+      case 3:
+          if(up){
+            discharge_current = discharge_current + 0.1;
+            lcd.setCursor(4,0);
+            lcd.print(discharge_current);
+            lcd.print("A");
+            lcd.write((uint8_t)1);
+            lcd.print("   ");
+          }
+          else{
+            discharge_current = discharge_current - 0.1;
+            if(discharge_current < 0){
+              discharge_current = 0;
+            }
+            lcd.setCursor(4,0);
+            lcd.print(discharge_current);
+            lcd.print("A");
+            lcd.write((uint8_t)1);
+            lcd.print("   ");
+          }
+          break;
+      }
+   break;
+   case 4: // set charge param screen
+     switch(arrowpos){
+      // Write the cases for set param screen
+     }
+  
+   }
+ TurnDetected = false;
+ }
+
+ if(button){
+  delay(200);
+  switch(screen){
+    case 0:
+      if(arrowpos == 0){
+        screen = 1;
+        testing_mode_screen();
+        lcd.setCursor(0,1);
+        lcd.write((uint8_t)0);
+      }
+      else if(arrowpos == 1){
+        screen = 2;
+        charge_mode_screen();
+        lcd.setCursor(0,0);
+        lcd.write((uint8_t)0);
+      }
+      else{
+        screen = 3;
+      }
+    break;
+    case 1:
+      switch(arrowpos){
+        case 0:
+          // Add code here after creating the set_param case for switch
+          break;
+        case 1:
+          screen = 0;
+          mode_screen();
+          lcd.setCursor(0,0);
+          lcd.write((uint8_t)0);
+          break;
+     }
+   }
+   button = false;
+   arrowpos = 0;  
+ }
   
 }
 
@@ -199,8 +411,11 @@ void set_testing_param_screen(){
 }
 
 void charge_mode_screen(){
+  // To do : Change configuration to involve a set Current command
+  // Set a cursor for CC and set a different arrowpos for changing the value
+  // Set a maximum and minimum current charge
   lcd.clear();
-  lcd.setCursor(0,0);
+  lcd.setCursor(1,0);
   lcd.print("CC:");
   lcd.setCursor(1,1);
   lcd.print("Start");
@@ -210,7 +425,7 @@ void charge_mode_screen(){
 
 void discharge_mode_screen(){
   lcd.clear();
-  lcd.setCursor(0,0);
+  lcd.setCursor(1,0);
   lcd.print("DC:");
   lcd.setCursor(1,1);
   lcd.print("Start");
@@ -385,15 +600,13 @@ int record_data(String _dataline){
   if(!SD.begin(CS)){
     return -1;
   }
-  File dataFile = SD.open("datalog.csv", FILE_WRITE);
-  if (dataFile){
+  datalog = SD.open("data.csv", FILE_WRITE);
+  if (datalog){
     open_file = false;
-    datalog = dataFile;
-    
-  }
+ }
   else {return -1;}
   }
- datalog.print(_dataline);
+ datalog.println(_dataline);
  return 0;
    
 }
@@ -405,3 +618,38 @@ bool close_file(){
   }
   return false;
 }
+
+void calculate_Ah_rating(bool _usePeukerts){
+  if (_usePeukerts){
+    
+  }
+}
+/*
+void test_writing(){
+  if(!SD.begin(CS)){
+    Serial.println("Card Failed");
+    return;
+  }
+  Serial.println("Card initialized");
+  datalog = SD.open("data.csv", FILE_WRITE);
+  if (datalog){
+    for(int i=0; i < 50; i++){
+      datalog.println(i);
+ }
+ datalog.close();
+ }
+ Serial.println("Finished writing");
+ datalog = SD.open("data.csv");
+ if (datalog){
+  Serial.println("Init successful");
+  while(datalog.available()){
+    Serial.write(datalog.read());
+  }
+  datalog.close();
+ }
+ else{
+  Serial.println("error opening the file");
+ }
+ 
+}
+*/
