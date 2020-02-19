@@ -6,6 +6,8 @@
 #include <rgb_lcd.h>
 #include <SD.h>
 #include <SPI.h>
+#include <Chrono.h>
+#include <LightChrono.h>
 #define float_voltage 13.8
 #define default_temp 25
 #define Current_Sens_Pin A0
@@ -41,6 +43,7 @@ bool charge_complete = false;
 bool discharge_complete = false;
 rgb_lcd lcd;
 File datalog;
+Chrono Timer;
 /*ROTARY ENCODER*******************/
 #define clk 2
 #define dt 3
@@ -94,6 +97,7 @@ void check_temp();              // check the temperature of the battery
 void setup_discharge();         // setup the discharge rate and cutoff voltage
 void update_battery_status();   // get the battery status
 double calculate_Ah_rating();   // calculate the Ah rating using Peukert's Law
+unsigned long _time = millis(); // get the time
 /*Helper Functions****************/
 double get_current();           
 double get_voltage();
@@ -154,7 +158,7 @@ void loop(){
   if(TurnDetected){
     delay(200);
     switch(screen){
-      case 0:
+      case 0:       // General screen
         switch(arrowpos){
           case 0:
             if(!up){
@@ -177,7 +181,7 @@ void loop(){
               lcd.write((uint8_t)0);
               arrowpos = 0;
             }
-            break;
+          break;
           case 2:
             if (up){
               mode_screen();
@@ -185,7 +189,7 @@ void loop(){
               lcd.write((uint8_t)0);
               arrowpos = 1;
             }
-            break;
+          break;
         }
       break;
      case 1:    // case 1 is testing mode screen
@@ -318,10 +322,72 @@ void loop(){
           break;
       }
    break;
-   case 4: // set charge param screen
+   case 4: // set testing param screen
      switch(arrowpos){
-      // Write the cases for set param screen
+      case 0:
+       if(!up){
+          set_testing_param_screen();
+          lcd.setCursor(0,1);
+          lcd.write((uint8_t)0);
+          arrowpos = 1;
+       }
+       break;
+     case 1:
+       if(up){
+          set_testing_param_screen();
+          lcd.setCursor(0,0);
+          lcd.write((uint8_t)0);
+          arrowpos=0;
+       }
+       else{
+         set_testing_param_screen();
+         lcd.setCursor(11,1);
+         lcd.write((uint8_t)0);
+         arrowpos=2;
+       }
+       break;
+     case 2:
+      if(up){
+        set_testing_param_screen();
+        lcd.setCursor(0,1);
+        lcd.write((uint8_t)0);
+        arrowpos=1;
+      }
+      break;
+     case 3: 
+      if(up){
+        Ah_rating += 1;
+        set_testing_param_screen();
+        lcd.setCursor(5,0);
+        lcd.print(Ah_rating);
+        lcd.print("Ah");
+        lcd.write((uint8_t)1);
+        lcd.print("   ");
+      }
+     else{
+        Ah_rating -= 1;
+        if(Ah_rating  <= 0){
+          Ah_rating = 0.0;
+        }
+        set_testing_param_screen();
+        lcd.setCursor(5,0);
+        lcd.print(Ah_rating);
+        lcd.print("Ah");
+        lcd.write((uint8_t)1);
+        
+      }
+     break;
+    
      }
+   break;
+  case 5: // Display charge parameters screen
+    delay(200);
+    int __time = millis();
+    while(!charge_complete){
+     manage_charging();
+    }
+  break;
+  
   
    }
  TurnDetected = false;
@@ -336,32 +402,81 @@ void loop(){
         testing_mode_screen();
         lcd.setCursor(0,1);
         lcd.write((uint8_t)0);
+        arrowpos = 0;
       }
       else if(arrowpos == 1){
         screen = 2;
         charge_mode_screen();
         lcd.setCursor(0,0);
         lcd.write((uint8_t)0);
+        arrowpos=0;
       }
       else{
         screen = 3;
+        discharge_mode_screen();
+        lcd.setCursor(0,0);
+        lcd.write((uint8_t)0);
+        arrowpos=0;
       }
     break;
     case 1:
       switch(arrowpos){
         case 0:
-          // Add code here after creating the set_param case for switch
+          screen = 4;
+          set_testing_param_screen();
+          lcd.setCursor(0,0);
+          lcd.write((uint8_t)0);
+          arrowpos=0;
           break;
         case 1:
           screen = 0;
           mode_screen();
           lcd.setCursor(0,0);
           lcd.write((uint8_t)0);
+          arrowpos=0;
           break;
      }
+   case 2:
+    // for C mode
+    break;
+   case 3:
+   
+   break;
+   case 4:
+     switch(arrowpos){
+       case 0:
+        set_testing_param_screen();
+        lcd.setCursor(5,0);
+        lcd.print(Ah_rating);
+        lcd.print("Ah");
+        lcd.write((uint8_t)1);
+        arrowpos = 3;
+        break;
+       case 1: // case for testing_param_screen(Start Button)
+        charging_mode_ongoing_screen();
+        lcd.setCursor(11,1);
+        lcd.write((uint8_t)0);
+        while(true){};
+        
+        break;
+       case 2:
+        screen = 1;
+        testing_mode_screen();
+        lcd.setCursor(0,1);
+        lcd.write((uint8_t)0);
+        arrowpos=1;
+        break;
+       case 3: // case for the AHR Rating
+        set_testing_param_screen();
+        lcd.setCursor(0,0);
+        lcd.write((uint8_t)0);
+        arrowpos=0;
+        break;
+     }
+   break;
    }
    button = false;
-   arrowpos = 0;  
+  
  }
   
 }
@@ -400,10 +515,8 @@ void testing_mode_screen(){
 
 void set_testing_param_screen(){
   lcd.clear();
-  lcd.setCursor(0,0); // col, row
-  lcd.print("DC:");
-  lcd.setCursor(9, 0);
-  lcd.print("CC:");
+  lcd.setCursor(1,0); // col, row
+  lcd.print("AHR:");
   lcd.setCursor(1,1);
   lcd.print("Start");
   lcd.setCursor(12,1);
@@ -490,8 +603,12 @@ double get_voltage(){
 }
 
 void manage_charging(){
-  if (charge_complete)
+  int counter = 0;
+  int seconds = 0;
+  int mins = 0;
+  if (charge_complete){
     return;
+  }
   static int first_call = true;
   static double charge_current = Ah_rating/3.0;
   delayMicroseconds(100);
@@ -499,37 +616,52 @@ void manage_charging(){
   open_circuit_voltage = (map(analogRead(Bat_VSensor_Pin), 0, 1023, 0 ,5)*((100.0+330.0)/100.0));
   if (open_circuit_voltage > Charged_BatVoltage){
     charge_complete = true;
+    lcd.clear();
     lcd.setCursor(0,0);
     lcd.print("Battery Charged");
     lcd.setCursor(0,1);
     lcd.print("Voltage at:");
     lcd.print(open_circuit_voltage);
+    screen = 0;
  }
   first_call = false;
   return;
-  }
-  if (user_set){
-  charge_current = user_current_input;
-  }
-  if(charge_current > 4.0){
-    charge_current = 4.0;
   }
  int base_voltage = 0;
  analogWrite(T_base, base_voltage);
  digitalWrite(RELAY_1, HIGH);
  while(!button){
-      while(get_current() < charge_current){
+      /*while(get_current() < charge_current){
         base_voltage += 1;
         if (base_voltage > 255){
           base_voltage = 255;
         }
+      */  
       analogWrite(T_base, base_voltage);
       delayMicroseconds(100);
-      if(get_voltage() > float_voltage){
+      counter++;
+      /*
+      if(get_voltage() >= float_voltage){
         charge_complete = true;
         break;
       }
+      */
+      if(counter == 10000){
+        seconds +=1;
+        counter =0;
+        if(seconds == 60){
+          mins += 1;
+          seconds=0;
+          lcd.setCursor(4,0);
+          lcd.write(mins);
+          lcd.setCursor(12,0);
+          lcd.write(get_voltage());
+          lcd.setCursor(2,0);
+          lcd.write(get_current());     
+        }
+        
       }
+      /*}
       while(charge_current > get_current()){
         base_voltage -= 1;
         if(base_voltage <= 0){
@@ -537,18 +669,21 @@ void manage_charging(){
        }
      analogWrite(T_base, base_voltage);
      delayMicroseconds(100);
-     if(get_voltage() > float_voltage){
+     if(get_voltage() >= float_voltage){
        charge_complete = true;
        break;
       }
      }
      if(charge_complete){
-     digitalWrite(RELAY_1, LOW);
+     */
+     //digitalWrite(RELAY_1, LOW);
      analogWrite(T_base, 0);
+     /*
      charge_complete = true;
      return;
+     */
     }
-  }
+  
    delay(1000);
    digitalWrite(RELAY_1, LOW);
    analogWrite(T_base, 0);
@@ -585,8 +720,14 @@ void manage_discharging(){
       delayMicroseconds(100);
       counter++;
       OCR1A = OCR1A -1;
+      if (OCR1A = 0){
+        OCR1A =0;
+      }
       if(dual){
       OCR1B = OCR1B -1;
+      if (OCR1B <= 0){
+        OCR1B =0;
+      }
       }
       if(counter > 5000){
         break;
@@ -624,6 +765,13 @@ void calculate_Ah_rating(bool _usePeukerts){
     
   }
 }
+
+void update_battery_status(){
+ 
+  
+}
+
+
 /*
 void test_writing(){
   if(!SD.begin(CS)){
