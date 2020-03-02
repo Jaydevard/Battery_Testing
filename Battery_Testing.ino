@@ -51,7 +51,7 @@ long int counter = 0;
 rgb_lcd lcd;
 File datalog;
 Chrono Timer1(Chrono::MICROS);
-Chrono Timer2(Chrono::SECONDS);
+Chrono Timer2;
 /*ROTARY ENCODER*******************/
 #define clk 2
 #define dt 3
@@ -148,7 +148,7 @@ void setup(){
   OCR1B = 0;
   lcd.begin(16, 2);
   lcd.setRGB(255, 0, 0);
-  //Serial.begin(9600);
+  Serial.begin(9600);
   lcd.clear();
   lcd.createChar(0, cursor_char);
   lcd.createChar(1, custom_char);
@@ -465,16 +465,23 @@ void loop(){
         Timer2.start();
         digitalWrite(C_RELAY, HIGH);
         adjust_charge_current(true, current);
+        int smcount = 0;
+        int read_sequence = 100;
         button = false;
         while(true){
           if(Timer1.hasPassed(100)){
             Timer1.restart();
             adjust_charge_current(false, current);
           }
-          if(Timer2.hasPassed(1)){
+          if(Timer2.hasPassed(100+(smcount*read_sequence))){
+            update_battery_status('c', counter);
+            smcount++;
+          }
+          if(Timer2.hasPassed(1000)){
             Timer2.restart();
             counter++;
             update_battery_status('c', counter);
+            smcount = 0;
           }
           if(button){
             digitalWrite(C_RELAY, LOW);
@@ -539,14 +546,21 @@ void loop(){
         Timer2.start();
         digitalWrite(D_RELAY, HIGH);
         button = false;
+        int read_sequence = 200;
+        int smcount = 0;
         while(true){
           if(Timer1.hasPassed(100)){
             Timer1.restart();
             //adjust_discharge_current(dual, current);
           }
-          if(Timer2.hasPassed(1)){
+          if(Timer2.hasPassed(200+(read_sequence*smcount))){
+            update_battery_status('d', counter);
+            smcount ++;
+          }
+          if(Timer2.hasPassed(1000)){
             Timer2.restart();
             counter ++;
+            smcount = 0;
             update_battery_status('d', counter);
             
           }
@@ -644,7 +658,6 @@ void charging_mode_ongoing_screen(){
   lcd.setCursor(0,0);
   lcd.print("t:");
   lcd.print("   ");
-  lcd.print("min");
   lcd.setCursor(9,0);
   lcd.print("V:");
   lcd.print("    ");
@@ -653,8 +666,8 @@ void charging_mode_ongoing_screen(){
   lcd.print("C:");
   lcd.print("    ");
   lcd.print("A");
-  lcd.print(" ");
-  lcd.print("CM");
+  lcd.print("  ");
+  lcd.print("C");
   lcd.setCursor(12, 1);
   lcd.print("Back");
 }
@@ -664,7 +677,6 @@ void discharging_mode_ongoing_screen(){
   lcd.setCursor(0,0);
   lcd.print("t:");
   lcd.print("   ");
-  lcd.print("min");
   lcd.setCursor(9,0);
   lcd.print("V:");
   lcd.print("    ");
@@ -673,26 +685,27 @@ void discharging_mode_ongoing_screen(){
   lcd.print("C:");
   lcd.print("    ");
   lcd.print("A");
-  lcd.print(" ");
-  lcd.print("DM");
+  lcd.print("  ");
+  lcd.print("D");
   lcd.setCursor(12, 1);
   lcd.print("Back");
 }
 
 double get_current(){
-  delayMicroseconds(200);
-  return ((analogRead(Current_Sens_Pin)/1024.0)*(5000/100));
+  double current = ((analogRead(Current_Sens_Pin)*5000.0/1023.00)-2500.0)/100;
+  return current;
 }
 
 double get_discharge_current(){
-  delayMicroseconds(200);
-  return ((analogRead(Current_SensD_Pin)/1024.0)*(5000/100));
+  double current = ((analogRead(Current_SensD_Pin)*5000.0/1023.00)-2500.0)/100;
+  return current;
  
 }
 
 double get_voltage(){
-  delayMicroseconds(200);
-  return (map(analogRead(Bat_VSensor_Pin), 0, 1023, 0 ,5)*((100.0+330.0)/100.0));
+  double voltage = analogRead(Bat_VSensor_Pin)/1.00;
+  
+  return (voltage);
 }
 
 int record_data(String _dataline){
@@ -727,38 +740,37 @@ void calculate_Ah_rating(bool _usePeukerts){
 }
 
 void update_battery_status(char _mode, int _counter){
-  double current = 0;
+  double current = 0.000;
   if (_mode == 'd'){
   current = get_discharge_current();
+  delayMicroseconds(200);
   }
   else{
   current = get_current();
+  delayMicroseconds(200);
   
   }
   double voltage = get_voltage();
-  lcd.clear();
-  lcd.setCursor(0,0);
-  lcd.print("t:");
+  delayMicroseconds(200);
+  lcd.setCursor(2,0);
   lcd.print(_counter);
   lcd.print("sec");
-  lcd.setCursor(9,0);
-  lcd.print("V:");
+  lcd.setCursor(11,0);
   lcd.print(voltage);
-  lcd.print("V");
-  lcd.setCursor(0,1);
-  lcd.print("C:");
-  lcd.print(current);
-  lcd.print("A");
-  lcd.print(" ");
+  lcd.setCursor(2,1);
   if(_mode == 'd'){
-    lcd.print("DM"); 
+  lcd.print("       D");
   }
   else{
-    lcd.print("CM");
+  lcd.print("       C");
   }
-  lcd.setCursor(11,1);
-  lcd.write((uint8_t)0);
-  lcd.print("Back");
+  lcd.setCursor(2,1);
+  lcd.print(current);
+  lcd.print("A");
+  
+  
+  
+ 
 }
 
 void adjust_discharge_current(bool _dual, double _target_current){
