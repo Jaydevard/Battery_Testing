@@ -18,12 +18,13 @@
 #define Temp_Sensor A2
 #define Current_SensD_Pin A3
 #define Charged_BatVoltage 12.5
-#define MAX_CC 4.5
+#define MAX_CC 3.5
 #define MAX_DC 8
+#define CC_REG_OFFSET 2.48*1000
+#define DC_REG_OFFSET 2.48*1000
 /*RELAYS***************************/
-#define C_RELAY 1
+#define C_RELAY 7
 #define D_RELAY 8
-#define M_RELAY 7
 /*MOSFETS**************************/
 #define MOSF1 9
 #define MOSF2 10
@@ -41,6 +42,7 @@ double battery_terminal_voltage = 0.0;
 const double peukerts_const = 1.4;
 int C_rating = 20;
 int Ah_rating = 7;
+double temp = 0.1;
 double discharge_current = 0.0;
 double charge_current = 0.0;
 bool charge_complete = false;
@@ -52,19 +54,23 @@ rgb_lcd lcd;
 File datalog;
 Chrono Timer1(Chrono::MICROS);
 Chrono Timer2;
+Chrono Timer3;
 /*ROTARY ENCODER*******************/
 #define clk 2
 #define dt 3
 #define sw 4
 double x[100]; 
 double y[100];
+/*HANDLING*************************/
 volatile boolean button = false;
 volatile boolean up = false;
 volatile boolean TurnDetected = false;
 char arrowpos = 0;
 char screen = 0;
 const unsigned char PS_128 = (1 << ADPS2) | (1 << ADPS1) | (1 << ADPS0);
-
+/*ERROR HANDLING******************/
+bool SD_CARD_ERROR;
+bool BAD_BATTERY_ERROR;
 /*INTERRUPT************************/
 ISR(PCINT2_vect){
   if (digitalRead(sw) == LOW){
@@ -111,6 +117,9 @@ double get_voltage();
 double get_discharge_current();
 int record_data();
 bool close_file();
+void adjust_discharge_current(bool _dual, double _target_current, bool _reset=false);
+void adjust_charge_current(bool _reset, double target_current);
+void update_battery_status(char _mode, int _counter, bool _temp_disp);
 /**Screens********************************/    
 void welcome_screen();
 void mode_screen();
@@ -119,15 +128,13 @@ void charge_mode_screen();
 void discharge_mode_screen();
 void charging_mode_ongoing_screen();
 void discharging_mode_ongoing_screen();
-
+void temp_display();
 
 void setup(){
   pinMode(C_RELAY, OUTPUT);
   pinMode(D_RELAY, OUTPUT);
-  pinMode(M_RELAY, OUTPUT);
   digitalWrite(C_RELAY, LOW);
   digitalWrite(D_RELAY, LOW);
-  digitalWrite(M_RELAY, LOW);
   pinMode(MOSF1, OUTPUT) ;
   pinMode(MOSF2, OUTPUT);
   pinMode(T_base, OUTPUT);
@@ -139,22 +146,15 @@ void setup(){
   PCICR |= 0b00000100;
   PCMSK2 |= 0b00010000;
   attachInterrupt(0, isr0, RISING);
-  TCCR1A = 0;
-  TCCR1A = (1 << COM1A1)|(1 << COM1B1)|(1 << WGM11);
-  TCCR1B = 0;
-  TCCR1B = (1 << WGM13)|(1 << WGM12)|(1 << CS10);
-  ICR1 = 2047;
-  OCR1A = 0;
-  OCR1B = 0;
   lcd.begin(16, 2);
   lcd.setRGB(255, 0, 0);
-  Serial.begin(9600);
   lcd.clear();
   lcd.createChar(0, cursor_char);
   lcd.createChar(1, custom_char);
   lcd.clear();
   welcome_screen();
   delay(4000);
+  Serial.begin(9600);
   mode_screen();
   lcd.setCursor(0, 0);
   lcd.write((uint8_t)0);
@@ -420,6 +420,36 @@ void loop(){
         arrowpos = 3;
         break;
        case 1: // case for testing_param_screen(Start Button)
+       {
+        digitalWrite(D_RELAY, LOW);           // turn off discharge relay
+        delay(20);                            // delay for 20 ms
+        digitalWrite(C_RELAY, LOW);           // turn off charge relay
+        delay(20);                            // delay for 20 ms
+        double charge_current = Ah_rating/5;  // set the charge current
+        if(charge_current >= MAX_CC){         // set the max current at 3.5A
+          charge_current = MAX_CC;            
+        }
+        Timer1.start();                       // 
+        Timer2.start();
+        digitalWrite(C_RELAY, HIGH);
+        adjust_charge_current(true, charge_current);
+        int smcount = 0;
+        int read_sequence = 100;
+        button = false;
+        while(true){
+          if(Timer1.hasPassed(100)){
+            Timer1.restart();
+            adjust_charge_current(false, charge_current);
+          }
+          
+        }
+         
+        
+        
+   
+        
+        
+        }
     
        break;
        case 2:
@@ -465,8 +495,10 @@ void loop(){
         Timer2.start();
         digitalWrite(C_RELAY, HIGH);
         adjust_charge_current(true, current);
+        bool temp_set = false;
         int smcount = 0;
         int read_sequence = 100;
+        bool break_out = false;
         button = false;
         while(true){
           if(Timer1.hasPassed(100)){
@@ -474,24 +506,42 @@ void loop(){
             adjust_charge_current(false, current);
           }
           if(Timer2.hasPassed(100+(smcount*read_sequence))){
-            update_battery_status('c', counter);
+            update_battery_status('c', counter, temp_set);
             smcount++;
           }
           if(Timer2.hasPassed(1000)){
             Timer2.restart();
             counter++;
-            update_battery_status('c', counter);
+            update_battery_status('c', counter, temp_set);
             smcount = 0;
           }
+          
           if(button){
-            digitalWrite(C_RELAY, LOW);
+            button = false;
+            TurnDetected = false;
             Timer1.stop();
             Timer2.stop();
-            screen =2;
-            delay(1000);
+            digitalWrite(C_RELAY, LOW);
+            while(button == false){
+              delay(10);
+              if(TurnDetected){
+                screen =2;
+                delay(1000);
+                break_out = true;
+                break;
+              }
+              if(button){
+                Timer1.resume();
+                Timer2.resume();
+                digitalWrite(C_RELAY, HIGH);
+                button = false;
+                break;
+              }
+            }
+           }
+          if(break_out){
             break;
           }
-          
         };   // This is where the charge routine will go
        }
        break;
@@ -526,12 +576,12 @@ void loop(){
         discharging_mode_ongoing_screen();
         lcd.setCursor(11,1);
         double current = 0;
+        bool break_out = false;
         bool dual = false;
         lcd.write((uint8_t)0);
         counter = 0;
         if(test_mode){
           current = Ah_rating/3;
-          
         }
         else{
           current = discharge_current;
@@ -544,32 +594,68 @@ void loop(){
           }
         Timer1.start();
         Timer2.start();
+        Timer3.start();
         digitalWrite(D_RELAY, HIGH);
         button = false;
+        String data = "";
+        adjust_discharge_current(dual,current, true);
+        bool temp_set = false;
         int read_sequence = 200;
         int smcount = 0;
-        while(true){
+        TurnDetected = false;
+        while(true){ 
           if(Timer1.hasPassed(100)){
             Timer1.restart();
-            //adjust_discharge_current(dual, current);
+            adjust_discharge_current(dual, current);
           }
           if(Timer2.hasPassed(200+(read_sequence*smcount))){
-            update_battery_status('d', counter);
+            update_battery_status('d', counter, temp_set);
             smcount ++;
           }
           if(Timer2.hasPassed(1000)){
             Timer2.restart();
-            counter ++;
+            counter++;
             smcount = 0;
-            update_battery_status('d', counter);
-            
-          }
+            update_battery_status('d', counter, temp_set);
+            data += String(counter);
+            data +=",";
+            data += String(get_discharge_current());
+            data += ",";
+            data += String(get_voltage());
+            data += ",";
+            data += String(temp);
+            //if(record_data(buff) == -1){
+            // SD_CARD_ERROR = true;
+             //break_out = true;
+            //break;
+            //}
+            Serial.println(data);
+            data = "";
+           }
           if(button){
+            button = false;
+            TurnDetected = false;
             Timer1.stop();
             Timer2.stop();
             digitalWrite(D_RELAY, LOW);
-            delay(1000);
-            screen =3;
+            while(button == false){
+              delay(10);
+              if(TurnDetected){
+                screen =3;
+                delay(1000);
+                break_out = true;
+                break;
+              }
+              if(button){
+                Timer1.resume();
+                Timer2.resume();
+                digitalWrite(D_RELAY, HIGH);
+                button = false;
+                break;
+              }
+            }
+           }
+          if(break_out){
             break;
           }
           };
@@ -636,7 +722,7 @@ void charge_mode_screen(){
   // Set a maximum and minimum current charge
   lcd.clear();
   lcd.setCursor(1,0);
-  lcd.print("CC:");
+  lcd.print("AHR:");
   lcd.setCursor(1,1);
   lcd.print("Start");
   lcd.setCursor(12,1);
@@ -651,6 +737,17 @@ void discharge_mode_screen(){
   lcd.print("Start");
   lcd.setCursor(12,1);
   lcd.print("Back");
+}
+
+void temp_display(){
+  lcd.setCursor(0,0);
+  lcd.print("         ");
+  lcd.setCursor(0,0);
+  lcd.print("T:");
+  lcd.print(temp);
+  lcd.print(char(223));
+  lcd.print("C");
+  
 }
 
 void charging_mode_ongoing_screen(){
@@ -692,12 +789,12 @@ void discharging_mode_ongoing_screen(){
 }
 
 double get_current(){
-  double current = ((analogRead(Current_Sens_Pin)*5000.0/1023.00)-2500.0)/100;
+  double current = ((analogRead(Current_Sens_Pin)*5000.0/1023.00)-CC_REG_OFFSET)/100;
   return current;
 }
 
 double get_discharge_current(){
-  double current = ((analogRead(Current_SensD_Pin)*5000.0/1023.00)-2500.0)/100;
+  double current = ((analogRead(Current_SensD_Pin)*5000.0/1023.00)-DC_REG_OFFSET)/100;
   return current;
  
 }
@@ -739,7 +836,7 @@ void calculate_Ah_rating(bool _usePeukerts){
   }
 }
 
-void update_battery_status(char _mode, int _counter){
+void update_battery_status(char _mode, int _counter, bool _temp_disp){
   double current = 0.000;
   if (_mode == 'd'){
   current = get_discharge_current();
@@ -752,6 +849,13 @@ void update_battery_status(char _mode, int _counter){
   }
   double voltage = get_voltage();
   delayMicroseconds(200);
+  if(_temp_disp){
+    lcd.setCursor(0,0);
+    lcd.print("         ");
+    lcd.setCursor(0,0);
+    lcd.print("t:");
+    _temp_disp = false;
+  }
   lcd.setCursor(2,0);
   lcd.print(_counter);
   lcd.print("sec");
@@ -773,23 +877,64 @@ void update_battery_status(char _mode, int _counter){
  
 }
 
-void adjust_discharge_current(bool _dual, double _target_current){
+void adjust_discharge_current(bool _dual, double _target_current, bool _reset=false){
+  static int PWM_9 = 0;
+  static int PWM_10 = 0;
+  if(_reset){
+    PWM_9 = false;
+    PWM_10 = false;
+    analogWrite(MOSF1,PWM_9);
+    delayMicroseconds(20);
+    analogWrite(MOSF2, PWM_10);
+    delayMicroseconds(20);
+    return;
+  }
   if(_dual){
     if(get_discharge_current() < _target_current){
-       OCR1A +=1;
-       OCR1B +=1;
+       PWM_9++;
+       PWM_10++;
+       if(PWM_9 >= 255){
+        PWM_9 = 255;
+       }
+       if(PWM_10 >=255){
+        PWM_10 = 255;
+       }
+       analogWrite(MOSF1, PWM_9);
+       delayMicroseconds(20);
+       analogWrite(MOSF2, PWM_10);
+       delayMicroseconds(20);
       }
     else{
-       OCR1A -= 1;
-       OCR1B -= 1;
+       PWM_9--;
+       PWM_10--;
+       if(PWM_9 == 0){
+        PWM_9 = 0;
+       }
+       if(PWM_10 == 0){
+        PWM_10 = 0;
+       }
+       analogWrite(MOSF1, PWM_9);
+       delayMicroseconds(20);
+       analogWrite(MOSF2, PWM_10);
+       delayMicroseconds(20);
      }
       }
     else{
       if(get_discharge_current() < _target_current){
-      OCR1A +=1;
+      PWM_9++;
+      if(PWM_9 >=255){
+        PWM_9 = 255;
+      }
+      analogWrite(MOSF1, PWM_9);
+      delayMicroseconds(20);
       }
       else{
-      OCR1A -=1;
+      PWM_9--;
+      if(PWM_9 == 0){
+        PWM_9 = 0;
+      }
+      analogWrite(MOSF1, PWM_9);
+      delayMicroseconds(20);
       }
    }
      
@@ -797,26 +942,26 @@ void adjust_discharge_current(bool _dual, double _target_current){
 
 
 void adjust_charge_current(bool _reset, double target_current){
-  static int PWM = 0;
+  static int PWM_5 = 0;
   if(_reset){
-    PWM = 0;
-    analogWrite(T_base, PWM);
+    PWM_5 = 0;
+    analogWrite(T_base, PWM_5);
     return;
   }
   double current = get_current();
   if(current < target_current){
-    PWM++;
-    if(PWM >= 255){
-      PWM = 255;
+    PWM_5++;
+    if(PWM_5 >= 255){
+      PWM_5 = 255;
     }
-  analogWrite(T_base, PWM);
+  analogWrite(T_base, PWM_5);
   }
   else{
-    PWM--;
-    if(PWM <= 0){
-      PWM = 0;
+    PWM_5--;
+    if(PWM_5 <= 0){
+      PWM_5 = 0;
     }
-   analogWrite(T_base, PWM);
+   analogWrite(T_base, PWM_5);
   }
 }
 
