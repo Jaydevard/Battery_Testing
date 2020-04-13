@@ -3,7 +3,7 @@
 /* Battery Tester Project 
  *  Created on 1/29/2020
  *  Intended for EE MUN Term 5 Project
- *  Author: Jaydev Madub && Girish Harendra Ramful
+ *  Author: Jaydev Madub 
  */
 #include <rgb_lcd.h>
 #include <SD.h>
